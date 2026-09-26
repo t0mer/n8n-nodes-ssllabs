@@ -1,0 +1,68 @@
+{
+  "name": "@t0mer/n8n-nodes-ssllabs",
+  "version": "2026.9.0",
+  "description": "n8n community node for the Qualys SSL Labs API v4: run SSL/TLS assessments, fetch grades, and watch for grade or certificate changes.",
+  "license": "MIT",
+  "homepage": "https://github.com/t0mer/n8n-nodes-ssllabs#readme",
+  "bugs": {
+    "url": "https://github.com/t0mer/n8n-nodes-ssllabs/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "ssllabs",
+    "ssl",
+    "tls",
+    "certificate",
+    "security"
+  ],
+  "author": {
+    "name": "t0mer",
+    "email": "tomer.klein@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/t0mer/n8n-nodes-ssllabs.git"
+  },
+  "scripts": {
+    "build": "n8n-node build",
+    "build:watch": "tsc --watch",
+    "dev": "n8n-node dev",
+    "lint": "n8n-node lint",
+    "lint:fix": "n8n-node lint --fix",
+    "release": "n8n-node release",
+    "prepublishOnly": "n8n-node prerelease",
+    "test": "vitest run"
+  },
+  "files": [
+    "dist"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "strict": true,
+    "credentials": [],
+    "nodes": []
+  },
+  "devDependencies": {
+    "@n8n/node-cli": "*",
+    "eslint": "9.32.0",
+    "prettier": "3.6.2",
+    "release-it": "^19.0.4",
+    "typescript": "5.9.2",
+    "vitest": "^3.2.7"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  },
+  "allowScripts": {
+    "isolated-vm@7.0.1": true,
+    "cpu-features@0.0.10": true,
+    "ssh2@1.15.0": true,
+    "unrs-resolver@1.12.2": true,
+    "eslint-plugin-n8n-nodes-base": false
+  }
+}
