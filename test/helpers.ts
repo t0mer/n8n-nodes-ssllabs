@@ -42,3 +42,42 @@ export function fakeContext(
 		},
 	};
 }
+
+export interface FakeExecuteOptions {
+	/** Node parameters per input item (one entry per item). */
+	items: Array<Record<string, unknown>>;
+	responses?: FakeResponse[];
+	credentials?: Record<string, unknown> | null;
+	continueOnFail?: boolean;
+	cancelSignal?: AbortSignal;
+}
+
+/** A fake IExecuteFunctions: parameters come from `items[i]`, HTTP from `responses`. */
+export function fakeExecute(options: FakeExecuteOptions) {
+	const base = fakeContext(options.responses ?? [], options.credentials);
+	return {
+		...base,
+		getInputData: () => options.items.map(() => ({ json: {} })),
+		getNodeParameter: (name: string, i: number, fallback?: unknown) => {
+			const value = options.items[i]?.[name];
+			if (value === undefined) {
+				if (fallback === undefined) throw new Error(`Missing parameter "${name}"`);
+				return fallback;
+			}
+			return value;
+		},
+		continueOnFail: () => options.continueOnFail ?? false,
+		getExecutionCancelSignal: () => options.cancelSignal,
+	};
+}
+
+/** Returns the request options passed to the HTTP helper for call `n`. */
+export function requestOf(ctx: ReturnType<typeof fakeContext>, n: number) {
+	const call = ctx.helpers.httpRequestWithAuthentication.mock.calls[n] as unknown[];
+	return (call.length === 2 ? call[1] : call[0]) as {
+		url: string;
+		method?: string;
+		qs?: Record<string, unknown>;
+		body?: Record<string, unknown>;
+	};
+}

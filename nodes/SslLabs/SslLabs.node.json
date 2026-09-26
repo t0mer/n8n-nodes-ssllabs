@@ -1,0 +1,18 @@
+{
+	"node": "@t0mer/n8n-nodes-ssllabs.sslLabs",
+	"nodeVersion": "1.0",
+	"codexVersion": "1.0",
+	"categories": ["Development", "Developer Tools"],
+	"resources": {
+		"credentialDocumentation": [
+			{
+				"url": "https://github.com/t0mer/n8n-nodes-ssllabs#credentials"
+			}
+		],
+		"primaryDocumentation": [
+			{
+				"url": "https://github.com/t0mer/n8n-nodes-ssllabs#readme"
+			}
+		]
+	}
+}

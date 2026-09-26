@@ -47,7 +47,9 @@
     "credentials": [
       "dist/credentials/SslLabsApi.credentials.js"
     ],
-    "nodes": []
+    "nodes": [
+      "dist/nodes/SslLabs/SslLabs.node.js"
+    ]
   },
   "devDependencies": {
     "@n8n/node-cli": "*",
