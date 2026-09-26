@@ -150,7 +150,8 @@ export class SslLabsTrigger implements INodeType {
 		inputs: [],
 		outputs: [NodeConnectionTypes.Main],
 		credentials: [{ name: 'sslLabsApi', required: true }],
-		properties,
+		// A fresh array per instance: n8n injects "Poll Times" into it in place.
+		properties: [...properties],
 	};
 
 	async poll(this: IPollFunctions): Promise<INodeExecutionData[][] | null> {
