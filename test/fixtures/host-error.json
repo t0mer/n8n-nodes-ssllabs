@@ -1,0 +1,13 @@
+{
+	"host": "nonexistent.example.com",
+	"port": 443,
+	"protocol": "http",
+	"isPublic": false,
+	"status": "ERROR",
+	"statusMessage": "Unable to resolve domain name",
+	"startTime": 1790380795000,
+	"testTime": 1790380796000,
+	"engineVersion": "2.3.1",
+	"criteriaVersion": "2009q",
+	"cacheExpiryTime": 1790381400000
+}

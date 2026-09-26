@@ -1,0 +1,17 @@
+{
+	"host": "example.com",
+	"port": 443,
+	"protocol": "http",
+	"isPublic": false,
+	"startTime": 1790380680000,
+	"engineVersion": "2.3.1",
+	"criteriaVersion": "2009q",
+	"status": "IN_PROGRESS",
+	"endpoints": [
+		{
+			"ipAddress": "93.184.216.34",
+			"statusMessage": "In progress",
+			"progress": 40
+		}
+	]
+}

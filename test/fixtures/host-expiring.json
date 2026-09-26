@@ -1,0 +1,55 @@
+{
+	"host": "example.com",
+	"port": 443,
+	"protocol": "http",
+	"isPublic": false,
+	"startTime": 1790380680000,
+	"testTime": 1790380790000,
+	"engineVersion": "2.3.1",
+	"criteriaVersion": "2009q",
+	"status": "READY",
+	"statusMessage": "Ready",
+	"endpoints": [
+		{
+			"ipAddress": "93.184.216.34",
+			"serverName": "example.com",
+			"statusMessage": "Ready",
+			"grade": "A",
+			"gradeTrustIgnored": "A",
+			"hasWarnings": false,
+			"isExceptional": false,
+			"progress": 100,
+			"details": {
+				"certChains": [
+					{
+						"id": "chain1",
+						"certIds": ["leaf2"],
+						"issues": 0,
+						"noSni": false
+					}
+				],
+				"protocols": [
+					{
+						"id": 772,
+						"name": "TLS",
+						"version": "1.3"
+					}
+				]
+			}
+		}
+	],
+	"certs": [
+		{
+			"id": "leaf2",
+			"subject": "CN=example.com",
+			"issuerSubject": "CN=R11, O=Let's Encrypt, C=US",
+			"serialNumber": "0badc0de",
+			"notBefore": 1783468800,
+			"notAfter": 1791248400,
+			"sha1Hash": "aaleaf2",
+			"sha256Hash": "ee-expiring",
+			"commonNames": ["example.com"],
+			"altNames": ["example.com", "www.example.com"]
+		}
+	]
+}
