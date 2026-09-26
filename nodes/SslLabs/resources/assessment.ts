@@ -268,10 +268,16 @@ export async function executeAnalyze(ctx: IExecuteFunctions): Promise<INodeExecu
 	// Every mode may start assessments (even Get Status, when nothing is cached), so all
 	// batches respect the free slots and the cool-off.
 	if (count > 1) {
-		const { body: info } = await sslLabsRequest<Info>(ctx, {
-			path: 'info',
-			abortSignal: cancelSignal,
-		});
+		let info: Info = {};
+		try {
+			({ body: info } = await sslLabsRequest<Info>(ctx, {
+				path: 'info',
+				abortSignal: cancelSignal,
+			}));
+		} catch {
+			// /info unavailable: fall back to one assessment at a time with the default cool-off.
+			info = { maxAssessments: 1, currentAssessments: 0 };
+		}
 		concurrency = batchConcurrency(requested, info.maxAssessments, info.currentAssessments);
 		const coolOff = Number(info.newAssessmentCoolOff);
 		gate = createStartGate(coolOff > 0 ? coolOff + 100 : DEFAULT_COOL_OFF_MS);
