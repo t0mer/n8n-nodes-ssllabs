@@ -48,7 +48,8 @@
       "dist/credentials/SslLabsApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/SslLabs/SslLabs.node.js"
+      "dist/nodes/SslLabs/SslLabs.node.js",
+      "dist/nodes/SslLabsTrigger/SslLabsTrigger.node.js"
     ]
   },
   "devDependencies": {

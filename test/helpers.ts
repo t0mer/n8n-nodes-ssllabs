@@ -87,3 +87,25 @@ export function requestOf(ctx: ReturnType<typeof fakeContext>, n: number) {
 		body?: Record<string, unknown>;
 	};
 }
+
+export interface FakePollOptions {
+	params: Record<string, unknown>;
+	responses?: FakeResponse[] | Responder;
+	staticData?: Record<string, unknown>;
+	mode?: 'manual' | 'trigger';
+	pollBudgetMs?: number;
+}
+
+/** A fake IPollFunctions; reuse `staticData` across calls to simulate consecutive polls. */
+export function fakePoll(options: FakePollOptions) {
+	const base = fakeContext(options.responses ?? []);
+	const staticData = options.staticData ?? {};
+	return {
+		...base,
+		staticData,
+		getNodeParameter: (name: string, fallback?: unknown) => options.params[name] ?? fallback,
+		getMode: () => options.mode ?? 'trigger',
+		getWorkflowStaticData: () => staticData,
+		getPollBudgetMs: () => options.pollBudgetMs ?? 60_000,
+	};
+}
