@@ -83,6 +83,8 @@ export interface WaitOptions extends AnalyzeCallOptions {
 	timeoutMs?: number;
 	sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
 	now?: () => number;
+	/** Awaited before the first (assessment-starting) call, e.g. to honor a batch cool-off. */
+	beforeStart?: () => Promise<void>;
 }
 
 /** Starts (or reuses) an assessment and polls until it is READY or ERROR, or the timeout passes. */
@@ -98,6 +100,7 @@ export async function waitForAssessment(
 	const now = options.now ?? Date.now;
 	const deadline = now() + timeoutMs;
 
+	await options.beforeStart?.();
 	let host = await analyze(ctx, params, true, options);
 	while (!isFinished(host)) {
 		const delay = host.status === 'IN_PROGRESS' ? intervalMs : initialIntervalMs;

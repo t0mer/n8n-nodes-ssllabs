@@ -5,6 +5,7 @@ import type {
 	INodeTypeDescription,
 } from 'n8n-workflow';
 import { NodeApiError, NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import { assessment } from './resources/assessment';
 import { registration } from './resources/registration';
 import { service } from './resources/service';
 import type { ResourceModule } from './shared';
@@ -14,7 +15,7 @@ import type { ResourceModule } from './shared';
  * cadence changes, timeouts, retries and batch-level concurrency control.
  */
 
-const resources: Record<string, ResourceModule> = { registration, service };
+const resources: Record<string, ResourceModule> = { assessment, registration, service };
 
 function toNodeError(ctx: IExecuteFunctions, error: Error, itemIndex: number) {
 	if (error instanceof NodeApiError || error instanceof NodeOperationError) {
@@ -22,6 +23,16 @@ function toNodeError(ctx: IExecuteFunctions, error: Error, itemIndex: number) {
 		return error;
 	}
 	return new NodeOperationError(ctx.getNode(), error, { itemIndex });
+}
+
+/** The raw Host parameter for error items, or '' when the operation has none or it fails to resolve. */
+function readHostParameter(ctx: IExecuteFunctions, itemIndex: number): string {
+	try {
+		const host = ctx.getNodeParameter('host', itemIndex, '');
+		return typeof host === 'string' ? host : '';
+	} catch {
+		return '';
+	}
 }
 
 export class SslLabs implements INodeType {
@@ -57,10 +68,11 @@ export class SslLabs implements INodeType {
 				type: 'options',
 				noDataExpression: true,
 				options: [
+					{ name: 'Assessment', value: 'assessment' },
 					{ name: 'Registration', value: 'registration' },
 					{ name: 'Service', value: 'service' },
 				],
-				default: 'service',
+				default: 'assessment',
 			},
 			...Object.values(resources).flatMap((r) => r.properties),
 		],
@@ -87,7 +99,11 @@ export class SslLabs implements INodeType {
 				}
 			} catch (error) {
 				if (this.continueOnFail()) {
-					returnData.push({ json: { error: (error as Error).message }, pairedItem: { item: i } });
+					const host = readHostParameter(this, i);
+					returnData.push({
+						json: { error: (error as Error).message, ...(host ? { host } : {}) },
+						pairedItem: { item: i },
+					});
 					continue;
 				}
 				failure = error as Error;
