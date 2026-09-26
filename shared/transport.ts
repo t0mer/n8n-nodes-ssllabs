@@ -41,6 +41,8 @@ export interface RetryPolicy {
 	serverErrorRetries: number;
 	serverErrorWaitMs: number;
 	sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
+	/** Epoch ms after which no retry wait may end; the last error is thrown instead. */
+	deadline?: number;
 }
 
 export const DEFAULT_RETRY_POLICY: RetryPolicy = {
@@ -218,6 +220,9 @@ export async function sslLabsRequest<T = unknown>(
 		}
 		// Linear backoff with jitter, as the API docs recommend randomising waits.
 		const waitMs = Math.round(plan.waitMs * (attempt + 1) * (0.75 + Math.random() * 0.5));
+		if (policy.deadline !== undefined && Date.now() + waitMs > policy.deadline) {
+			throw toApiError(ctx, response.statusCode, body, request.itemIndex, authenticate);
+		}
 		await policy.sleep(waitMs, request.abortSignal);
 	}
 }

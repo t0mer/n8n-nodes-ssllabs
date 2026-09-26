@@ -150,3 +150,17 @@ describe('sslLabsRequest retries', () => {
 		expect(signals).toEqual([controller.signal, controller.signal]);
 	});
 });
+
+describe('sslLabsRequest deadline', () => {
+	it('stops retrying when the next wait would pass the deadline', async () => {
+		const ctx = fakeContext([{ statusCode: 529 }, { statusCode: 200 }]);
+		const sleeps: number[] = [];
+		const err = await sslLabsRequest(asCtx(ctx), {
+			path: 'analyze',
+			retry: { deadline: Date.now() + 1_000, sleep: async (ms) => void sleeps.push(ms) },
+		}).catch((e) => e);
+		expect(err.httpCode).toBe('529');
+		expect(sleeps).toEqual([]);
+		expect(ctx.helpers.httpRequestWithAuthentication).toHaveBeenCalledTimes(1);
+	});
+});

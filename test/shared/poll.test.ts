@@ -124,3 +124,28 @@ describe('waitForAssessment (fake timers)', () => {
 		expect(ctx.helpers.httpRequestWithAuthentication).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('analyze retries', () => {
+	it('does not retry a 500 on a startNew call', async () => {
+		const ctx = fakeContext([{ statusCode: 500 }, ok(fixtures.dns())]);
+		const err = await waitForAssessment(
+			asCtx(ctx),
+			{ host: 'example.com', startNew: true },
+			{ retry: { sleep: async () => {} } },
+		).catch((e) => e);
+		expect(err.httpCode).toBe('500');
+		expect(ctx.helpers.httpRequestWithAuthentication).toHaveBeenCalledTimes(1);
+	});
+
+	it('caps transport retries at the assessment timeout', async () => {
+		const ctx = fakeContext([{ statusCode: 529 }, ok(fixtures.ready())]);
+		const sleep = vi.fn(async () => {});
+		const err = await waitForAssessment(
+			asCtx(ctx),
+			{ host: 'example.com' },
+			{ timeoutMs: 30_000, retry: { sleep } },
+		).catch((e) => e);
+		expect(err.httpCode).toBe('529');
+		expect(sleep).not.toHaveBeenCalled();
+	});
+});

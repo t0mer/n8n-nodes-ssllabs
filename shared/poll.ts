@@ -60,12 +60,18 @@ export async function analyze(
 	firstCall: boolean,
 	options: AnalyzeCallOptions = {},
 ): Promise<Host> {
+	const qs = buildAnalyzeQs(ctx, params, firstCall, options.itemIndex);
+	// Never repeat a startNew call after a 500: it may have started, and repeating loops (per docs).
+	const retry =
+		options.retry === false || !qs.startNew
+			? options.retry
+			: { ...options.retry, serverErrorRetries: 0 };
 	const { body } = await sslLabsRequest<Host>(ctx, {
 		path: 'analyze',
-		qs: buildAnalyzeQs(ctx, params, firstCall, options.itemIndex),
+		qs,
 		abortSignal: options.abortSignal,
 		itemIndex: options.itemIndex,
-		retry: options.retry,
+		retry,
 	});
 	return body;
 }
@@ -99,9 +105,14 @@ export async function waitForAssessment(
 	const wait = options.sleep ?? n8nSleep;
 	const now = options.now ?? Date.now;
 	const deadline = now() + timeoutMs;
+	// Retry waits inside a call must not run past the timeout either.
+	const callOptions: AnalyzeCallOptions = {
+		...options,
+		retry: options.retry === false ? false : { ...options.retry, deadline },
+	};
 
 	await options.beforeStart?.();
-	let host = await analyze(ctx, params, true, options);
+	let host = await analyze(ctx, params, true, callOptions);
 	while (!isFinished(host)) {
 		const delay = host.status === 'IN_PROGRESS' ? intervalMs : initialIntervalMs;
 		if (now() + delay > deadline) {
@@ -121,7 +132,7 @@ export async function waitForAssessment(
 			});
 		}
 		await wait(delay, options.abortSignal);
-		host = await analyze(ctx, params, false, options);
+		host = await analyze(ctx, params, false, callOptions);
 	}
 	return host;
 }
