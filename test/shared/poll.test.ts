@@ -137,6 +137,18 @@ describe('analyze retries', () => {
 		expect(ctx.helpers.httpRequestWithAuthentication).toHaveBeenCalledTimes(1);
 	});
 
+	it('still retries within the timeout when an injected clock is used', async () => {
+		const ctx = fakeContext([{ statusCode: 429 }, ok(fixtures.ready())]);
+		const sleep = vi.fn(async () => {});
+		const host = await waitForAssessment(
+			asCtx(ctx),
+			{ host: 'example.com' },
+			{ now: () => 0, retry: { rateLimitWaitMs: 100, sleep } },
+		);
+		expect(host.status).toBe('READY');
+		expect(sleep).toHaveBeenCalledTimes(1);
+	});
+
 	it('caps transport retries at the assessment timeout', async () => {
 		const ctx = fakeContext([{ statusCode: 529 }, ok(fixtures.ready())]);
 		const sleep = vi.fn(async () => {});
