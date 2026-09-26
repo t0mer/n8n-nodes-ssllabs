@@ -12,6 +12,7 @@ It ships two nodes and one credential:
 
 > **Not affiliated with Qualys.** This is an unofficial, community-maintained node. SSL Labs is a free service provided by Qualys; use it according to the [SSL Labs terms](https://www.ssllabs.com/about/terms.html). **Only assess hosts you own or are authorized to test.**
 
+- [Demo](#demo)
 - [Installation](#installation)
 - [Registration](#registration)
 - [Credentials](#credentials)
@@ -20,6 +21,16 @@ It ships two nodes and one credential:
 - [Rate limits and timing](#rate-limits-and-timing)
 - [Compatibility](#compatibility)
 - [Resources](#resources)
+
+## Demo
+
+[![SSL Labs for n8n demo: credential, registration, Analyze and the trigger's test event](https://raw.githubusercontent.com/t0mer/n8n-nodes-ssllabs/main/assets/demo/ssllabs-demo.png)](https://github.com/t0mer/n8n-nodes-ssllabs/raw/main/assets/demo/ssllabs-demo.mp4)
+
+▶️ [Watch the demo video](https://github.com/t0mer/n8n-nodes-ssllabs/raw/main/assets/demo/ssllabs-demo.mp4) (2½ min). It shows:
+- the credential
+- a free-mailbox registration being rejected (email addresses are blurred)
+- Get Info, then Analyze of `www.ssllabs.com`, with cache on and publish off
+- the trigger's Fetch Test Event
 
 ## Installation
 
