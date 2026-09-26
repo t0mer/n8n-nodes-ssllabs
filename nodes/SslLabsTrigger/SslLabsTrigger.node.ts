@@ -7,6 +7,7 @@ import type {
 	IPollFunctions,
 } from 'n8n-workflow';
 import { NodeApiError, NodeConnectionTypes } from 'n8n-workflow';
+import { GRADE_ORDER, isGrade } from '../../shared/grades';
 import { normalizeHost } from '../../shared/host';
 import { analyze, isFinished } from '../../shared/poll';
 import { toSummary } from '../../shared/summary';
@@ -39,12 +40,42 @@ const properties: INodeProperties[] = [
 		type: 'options',
 		options: [
 			{
+				name: 'Certificate Expiring',
+				value: 'certificateExpiring',
+				description: 'Fires once per certificate when it expires within the given number of days',
+			},
+			{
+				name: 'Grade Below Threshold',
+				value: 'gradeBelowThreshold',
+				description:
+					'Fires once when the grade drops below the threshold; re-arms when the grade recovers',
+			},
+			{
 				name: 'Grade Changed',
 				value: 'gradeChanged',
 				description: "Fires when a host's grade differs from the last seen grade",
 			},
 		],
 		default: 'gradeChanged',
+	},
+	{
+		displayName: 'Threshold Grade',
+		name: 'thresholdGrade',
+		type: 'options',
+		options: GRADE_ORDER.map((grade) => ({ name: grade, value: grade })),
+		default: 'A',
+		description:
+			'Fire when the grade is worse than this. T (trust issues) and M (name mismatch) rank below F.',
+		displayOptions: { show: { event: ['gradeBelowThreshold'] } },
+	},
+	{
+		displayName: 'Days Before Expiry',
+		name: 'daysBeforeExpiry',
+		type: 'number',
+		default: 21,
+		typeOptions: { minValue: 0 },
+		description: 'Fire when the certificate expires within this many days',
+		displayOptions: { show: { event: ['certificateExpiring'] } },
 	},
 	{
 		displayName: 'Max Result Age (Hours)',
@@ -105,9 +136,12 @@ export class SslLabsTrigger implements INodeType {
 		const hosts = readHosts(this);
 		const maxAge = this.getNodeParameter('maxAge', 24) as number;
 		const options = this.getNodeParameter('options', {}) as IDataObject;
+		const threshold = this.getNodeParameter('thresholdGrade', 'A');
 		const config: EventConfig = {
 			event: this.getNodeParameter('event', 'gradeChanged') as TriggerEvent,
 			emitErrors: options.emitErrors === true,
+			thresholdGrade: isGrade(threshold) ? threshold : 'A',
+			daysBeforeExpiry: this.getNodeParameter('daysBeforeExpiry', 21) as number,
 		};
 		const analyzeOnce = async (host: string) =>
 			await analyze(this, { host, fromCache: true, maxAge, all: 'done' }, true, { retry: false });
