@@ -17,16 +17,22 @@ export const fakeNode: INode = {
 };
 
 /** A minimal execute/poll context whose HTTP helpers replay the given responses in order. */
+export type Responder = (options: {
+	url: string;
+	qs?: Record<string, unknown>;
+}) => FakeResponse | Promise<FakeResponse>;
+
 export function fakeContext(
-	responses: FakeResponse[] = [],
+	responses: FakeResponse[] | Responder = [],
 	credentials: Record<string, unknown> | null = {
 		email: 'ops@example.com',
 		baseUrl: 'https://api.ssllabs.com/api/v4/',
 	},
 ) {
-	const queue = [...responses];
-	const next = vi.fn(async () => {
-		const response = queue.shift();
+	const queue = Array.isArray(responses) ? [...responses] : [];
+	const next = vi.fn(async (...args: unknown[]) => {
+		const options = (args.length === 2 ? args[1] : args[0]) as Parameters<Responder>[0];
+		const response = Array.isArray(responses) ? queue.shift() : await responses(options);
 		if (!response) throw new Error('No more fake responses');
 		return { headers: {}, ...response };
 	});
@@ -46,7 +52,7 @@ export function fakeContext(
 export interface FakeExecuteOptions {
 	/** Node parameters per input item (one entry per item). */
 	items: Array<Record<string, unknown>>;
-	responses?: FakeResponse[];
+	responses?: FakeResponse[] | Responder;
 	credentials?: Record<string, unknown> | null;
 	continueOnFail?: boolean;
 	cancelSignal?: AbortSignal;

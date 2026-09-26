@@ -1,10 +1,24 @@
-import type { IDataObject, IExecuteFunctions, INodeProperties } from 'n8n-workflow';
+import type {
+	IDataObject,
+	IExecuteFunctions,
+	INodeExecutionData,
+	INodeProperties,
+} from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
+import {
+	batchConcurrency,
+	createStartGate,
+	DEFAULT_BATCH_CONCURRENCY,
+	DEFAULT_COOL_OFF_MS,
+	MAX_BATCH_CONCURRENCY,
+	runPool,
+} from '../../../shared/batch';
 import { normalizeHost } from '../../../shared/host';
 import { analyze, waitForAssessment, type AnalyzeParams } from '../../../shared/poll';
 import { reportUrl, toSummary } from '../../../shared/summary';
-import type { Host } from '../../../shared/types';
-import type { ResourceModule } from '../shared';
+import { sslLabsRequest } from '../../../shared/transport';
+import type { Host, Info } from '../../../shared/types';
+import { errorItem, toNodeError, type ResourceModule } from '../shared';
 
 const show = { resource: ['assessment'], operation: ['analyze'] };
 
@@ -94,6 +108,15 @@ const properties: INodeProperties[] = [
 		default: {},
 		displayOptions: { show },
 		options: [
+			{
+				displayName: 'Batch Concurrency',
+				name: 'batchConcurrency',
+				type: 'number',
+				default: DEFAULT_BATCH_CONCURRENCY,
+				typeOptions: { minValue: 1, maxValue: MAX_BATCH_CONCURRENCY },
+				description:
+					'Maximum assessments to run at once when there are several input items. Also capped by the free slots SSL Labs reports.',
+			},
 			{
 				displayName: 'Detail Level',
 				name: 'detailLevel',
@@ -227,10 +250,55 @@ export async function analyzeItem(
 		: (toSummary(result) as unknown as IDataObject);
 }
 
+/**
+ * Runs Analyze for all input items with bounded concurrency. Before starting assessments for
+ * several items it reads `info` once, caps concurrency at the free assessment slots, and spaces
+ * starts by `newAssessmentCoolOff`.
+ */
+export async function executeAnalyze(ctx: IExecuteFunctions): Promise<INodeExecutionData[]> {
+	const count = ctx.getInputData().length;
+	const cancelSignal = ctx.getExecutionCancelSignal();
+	const continueOnFail = ctx.continueOnFail();
+	const requested = (ctx.getNodeParameter('options', 0, {}) as IDataObject).batchConcurrency;
+
+	let concurrency = 1;
+	let gate: ((signal?: AbortSignal) => Promise<void>) | undefined;
+	if (count > 1) {
+		if (readMode(ctx, 0) === 'getStatus') {
+			concurrency = batchConcurrency(requested, undefined, undefined);
+		} else {
+			const { body: info } = await sslLabsRequest<Info>(ctx, {
+				path: 'info',
+				abortSignal: cancelSignal,
+			});
+			concurrency = batchConcurrency(requested, info.maxAssessments, info.currentAssessments);
+			const coolOff = Number(info.newAssessmentCoolOff);
+			gate = createStartGate(coolOff > 0 ? coolOff + 100 : DEFAULT_COOL_OFF_MS);
+		}
+	}
+
+	const { results, firstError } = await runPool(
+		count,
+		concurrency,
+		async (i, signal) =>
+			await analyzeItem(ctx, i, {
+				abortSignal: signal,
+				beforeStart: gate ? async () => await gate(signal) : undefined,
+			}),
+		{ signal: cancelSignal, stopOnError: !continueOnFail },
+	);
+	if (firstError) throw toNodeError(ctx, firstError.error, firstError.index);
+
+	return results.map((result, i) => {
+		if (result?.ok) return { json: result.value, pairedItem: { item: i } };
+		const error = result?.error ?? new NodeOperationError(ctx.getNode(), 'Execution was cancelled');
+		if (!continueOnFail) throw toNodeError(ctx, error, i);
+		return errorItem(ctx, error, i);
+	});
+}
+
 export const assessment: ResourceModule = {
 	properties,
-	handlers: {
-		analyze: async (ctx, i) =>
-			await analyzeItem(ctx, i, { abortSignal: ctx.getExecutionCancelSignal() }),
-	},
+	handlers: {},
+	batchHandlers: { analyze: executeAnalyze },
 };
