@@ -6,7 +6,7 @@ import type {
 	IPollFunctions,
 	JsonObject,
 } from 'n8n-workflow';
-import { NodeApiError } from 'n8n-workflow';
+import { NodeApiError, sleep as n8nSleep } from 'n8n-workflow';
 
 export const DEFAULT_BASE_URL = 'https://api.ssllabs.com/api/v4';
 export const CREDENTIAL_TYPE = 'sslLabsApi';
@@ -26,6 +26,51 @@ export interface SslLabsRequest {
 	authenticate?: boolean;
 	abortSignal?: AbortSignal;
 	itemIndex?: number;
+	/** Retry policy for 429/500/503/529. `false` disables retries (e.g. in the polling trigger). */
+	retry?: Partial<RetryPolicy> | false;
+}
+
+export interface RetryPolicy {
+	/** Retries after a 429 (too many assessments). */
+	rateLimitRetries: number;
+	rateLimitWaitMs: number;
+	/** Retries after a 503 (maintenance) or 529 (overloaded). */
+	unavailableRetries: number;
+	unavailableWaitMs: number;
+	/** Retries after a 500. */
+	serverErrorRetries: number;
+	serverErrorWaitMs: number;
+	sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
+}
+
+export const DEFAULT_RETRY_POLICY: RetryPolicy = {
+	rateLimitRetries: 3,
+	rateLimitWaitMs: 15_000,
+	unavailableRetries: 2,
+	unavailableWaitMs: 60_000,
+	serverErrorRetries: 1,
+	serverErrorWaitMs: 5_000,
+	sleep: n8nSleep,
+};
+
+/** HTTP statuses that mean "SSL Labs is busy": back off rather than fail the input. */
+export const BUSY_STATUSES = [429, 503, 529];
+
+export function isBusyError(error: unknown): boolean {
+	return (
+		error instanceof NodeApiError && BUSY_STATUSES.includes(Number(error.httpCode ?? Number.NaN))
+	);
+}
+
+function retryPlan(policy: RetryPolicy, statusCode: number): { retries: number; waitMs: number } {
+	if (statusCode === 429)
+		return { retries: policy.rateLimitRetries, waitMs: policy.rateLimitWaitMs };
+	if (statusCode === 503 || statusCode === 529) {
+		return { retries: policy.unavailableRetries, waitMs: policy.unavailableWaitMs };
+	}
+	if (statusCode === 500)
+		return { retries: policy.serverErrorRetries, waitMs: policy.serverErrorWaitMs };
+	return { retries: 0, waitMs: 0 };
 }
 
 export interface SslLabsResponse<T> {
@@ -75,7 +120,9 @@ function apiErrors(body: unknown): ApiErrorEntry[] {
 function describeApiErrors(body: unknown): string {
 	const errors = apiErrors(body);
 	if (errors.length) {
-		return errors.map((e) => (e.field ? `${e.field}: ${e.message ?? ''}` : (e.message ?? ''))).join('; ');
+		return errors
+			.map((e) => (e.field ? `${e.field}: ${e.message ?? ''}` : (e.message ?? '')))
+			.join('; ');
 	}
 	if (body && typeof body === 'object' && typeof (body as IDataObject).message === 'string') {
 		return (body as IDataObject).message as string;
@@ -127,13 +174,18 @@ export function toApiError(
 	});
 }
 
-/** Performs one SSL Labs API call and maps non-2xx statuses to NodeApiError. */
+/**
+ * Performs an SSL Labs API call, retrying 429/500/503/529 a bounded number of times,
+ * and maps any final non-2xx status to NodeApiError.
+ */
 export async function sslLabsRequest<T = unknown>(
 	ctx: SslLabsContext,
 	request: SslLabsRequest,
 ): Promise<SslLabsResponse<T>> {
 	const authenticate = request.authenticate ?? true;
 	const baseUrl = await resolveBaseUrl(ctx, authenticate);
+	const policy: RetryPolicy | null =
+		request.retry === false ? null : { ...DEFAULT_RETRY_POLICY, ...request.retry };
 	const options: IHttpRequestOptions = {
 		method: request.method ?? 'GET',
 		url: `${baseUrl}/${request.path.replace(/^\/+/, '')}`,
@@ -147,15 +199,23 @@ export async function sslLabsRequest<T = unknown>(
 		options.json = true;
 	}
 
-	const response = (
-		authenticate
-			? await ctx.helpers.httpRequestWithAuthentication.call(ctx, CREDENTIAL_TYPE, options)
-			: await ctx.helpers.httpRequest(options)
-	) as { statusCode: number; body: unknown; headers?: IDataObject };
+	for (let attempt = 0; ; attempt++) {
+		const response = (
+			authenticate
+				? await ctx.helpers.httpRequestWithAuthentication.call(ctx, CREDENTIAL_TYPE, options)
+				: await ctx.helpers.httpRequest(options)
+		) as { statusCode: number; body: unknown; headers?: IDataObject };
 
-	const body = parseBody(response.body);
-	if (response.statusCode < 200 || response.statusCode >= 300) {
-		throw toApiError(ctx, response.statusCode, body, request.itemIndex);
+		const body = parseBody(response.body);
+		if (response.statusCode >= 200 && response.statusCode < 300) {
+			return { body: body as T, headers: response.headers ?? {} };
+		}
+		const plan = policy ? retryPlan(policy, response.statusCode) : { retries: 0, waitMs: 0 };
+		if (!policy || attempt >= plan.retries) {
+			throw toApiError(ctx, response.statusCode, body, request.itemIndex);
+		}
+		// Linear backoff with jitter, as the API docs recommend randomising waits.
+		const waitMs = Math.round(plan.waitMs * (attempt + 1) * (0.75 + Math.random() * 0.5));
+		await policy.sleep(waitMs, request.abortSignal);
 	}
-	return { body: body as T, headers: response.headers ?? {} };
 }
