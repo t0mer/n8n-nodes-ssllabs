@@ -94,11 +94,12 @@ export interface FakePollOptions {
 	staticData?: Record<string, unknown>;
 	mode?: 'manual' | 'trigger';
 	pollBudgetMs?: number;
+	credentials?: Record<string, unknown> | null;
 }
 
 /** A fake IPollFunctions; reuse `staticData` across calls to simulate consecutive polls. */
 export function fakePoll(options: FakePollOptions) {
-	const base = fakeContext(options.responses ?? []);
+	const base = fakeContext(options.responses ?? [], options.credentials);
 	const staticData = options.staticData ?? {};
 	return {
 		...base,

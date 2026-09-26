@@ -73,6 +73,11 @@ export function loadState(staticData: Record<string, unknown>): TriggerState {
 	return staticData as unknown as TriggerState;
 }
 
+/** Records that a host was attempted (moves it to the back of the queue). Keeps everything else. */
+export function touch(state: TriggerState, host: string, now: number): void {
+	state.hosts[host] = { ...(state.hosts[host] ?? EMPTY_HOST), lastCheckedAt: now };
+}
+
 /** Marks a host as waiting for an assessment. Keeps everything else. */
 export function markPending(state: TriggerState, host: string, now: number): void {
 	const prev = state.hosts[host];
@@ -113,6 +118,7 @@ export function applyResult(
 	if (
 		!baseline &&
 		config.event === 'gradeChanged' &&
+		prev.grade !== null &&
 		summary.grade !== null &&
 		prev.grade !== summary.grade
 	) {
@@ -124,12 +130,11 @@ export function applyResult(
 	let threshold: string | null = null;
 	let belowThreshold = false;
 	if (config.event === 'gradeBelowThreshold') {
-		threshold = config.thresholdGrade;
+		// Tracking starts at the first graded result for this threshold (a silent baseline).
 		const tracked = !baseline && prev.threshold === config.thresholdGrade;
-		belowThreshold = tracked ? prev.belowThreshold : false;
 		if (summary.grade !== null) {
 			const below = isWorseThan(summary.grade, config.thresholdGrade);
-			if (tracked && below && !belowThreshold) {
+			if (tracked && below && !prev.belowThreshold) {
 				events.push({
 					...summary,
 					event: 'gradeBelowThreshold',
@@ -137,7 +142,11 @@ export function applyResult(
 					thresholdGrade: config.thresholdGrade,
 				});
 			}
+			threshold = config.thresholdGrade;
 			belowThreshold = below;
+		} else if (tracked) {
+			threshold = config.thresholdGrade;
+			belowThreshold = prev.belowThreshold;
 		}
 	}
 

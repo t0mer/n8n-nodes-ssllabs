@@ -83,7 +83,8 @@ describe('SSL Labs Trigger — grade changed', () => {
 				},
 			}),
 		);
-		expect(seen).toEqual(['b.example.com', 'c.example.com', 'a.example.com']);
+		// The unchecked host goes first; the one that hit the busy response moves to the back.
+		expect(seen).toEqual(['c.example.com', 'a.example.com', 'b.example.com']);
 	});
 
 	it('throws when the email is not registered', async () => {

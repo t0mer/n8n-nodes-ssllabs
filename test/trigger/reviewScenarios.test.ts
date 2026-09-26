@@ -23,6 +23,8 @@ function host(
 	return h;
 }
 
+const host_ = (grade: string, name: string) => host(grade, { name });
+
 async function sequence(steps: Array<{ params: Record<string, unknown>; body: Host }>) {
 	const staticData = {};
 	const out = [];
@@ -105,30 +107,86 @@ describe('trigger review scenarios', () => {
 		expect(out[1][0]).toMatchObject({ host: 'example.com', previousGrade: 'A' });
 	});
 
-	it.each([429, 503, 500])(
-		'skips the rest of the poll on %i without recording an error',
-		async (status) => {
-			const staticData = {};
+	it.each([429, 503, 529])('stops the poll on %i without recording an error', async (status) => {
+		const staticData = {};
+		const seen: string[] = [];
+		const responder: Responder = ({ qs }) => {
+			seen.push(String(qs?.host));
+			return { statusCode: status };
+		};
+		const ctx = fakePoll({
+			params: {
+				...base,
+				hosts: ['a.example.com', 'b.example.com'],
+				event: 'gradeChanged',
+				options: { emitErrors: true },
+			},
+			staticData,
+			responses: responder,
+		});
+		expect(await poll(ctx)).toBeNull();
+		expect(seen).toEqual(['a.example.com']);
+		expect(staticData).toMatchObject({ hosts: { 'a.example.com': { error: null, grade: null } } });
+	});
+
+	it('skips only the failing host on a 500 or network error, and never starves the others', async () => {
+		const staticData = {};
+		const hosts = ['a.example.com', 'x.example.com', 'b.example.com'];
+		const params = { ...base, hosts, event: 'gradeChanged', options: { emitErrors: true } };
+		for (let round = 0; round < 3; round++) {
 			const seen: string[] = [];
-			const responder: Responder = ({ qs }) => {
-				seen.push(String(qs?.host));
-				return { statusCode: status };
-			};
 			const ctx = fakePoll({
-				params: {
-					...base,
-					hosts: ['a.example.com', 'b.example.com'],
-					event: 'gradeChanged',
-					options: { emitErrors: true },
-				},
+				params,
 				staticData,
-				responses: responder,
+				responses: ({ qs }) => {
+					const host = String(qs?.host);
+					seen.push(host);
+					if (host === 'x.example.com') return { statusCode: 500 };
+					if (host === 'b.example.com' && round === 1) {
+						throw Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
+					}
+					return ok(host_('A', host));
+				},
 			});
 			expect(await poll(ctx)).toBeNull();
-			expect(seen).toEqual(['a.example.com']);
-			expect(staticData).toEqual({ stateVersion: 1, hosts: {} });
-		},
-	);
+			expect([...seen].sort()).toEqual([...hosts].sort());
+		}
+		expect(staticData).toMatchObject({ hosts: { 'x.example.com': { error: null } } });
+	});
+
+	it.each([
+		[
+			'a non-https base URL',
+			{ credentials: { email: 'a@b.c', baseUrl: 'http://api.ssllabs.com/api/v4' } },
+			/https/,
+		],
+		['a 404', { status: 404 }, /HTTP 404/],
+		['a 403', { status: 403 }, /HTTP 403/],
+	])('fails the poll on %s instead of hiding it', async (_label, setup, message) => {
+		const ctx = fakePoll({
+			params: { ...base, event: 'gradeChanged' },
+			responses: [{ statusCode: (setup as { status?: number }).status ?? 200, body: 'Not Found' }],
+			credentials: (setup as { credentials?: Record<string, unknown> }).credentials,
+		});
+		await expect(poll(ctx)).rejects.toThrow(message);
+	});
+
+	it('does not fire Grade Changed or threshold alerts off an ungraded first result', async () => {
+		const noGrade = host('A');
+		for (const e of noGrade.endpoints ?? []) delete e.grade;
+		const gc = await sequence([
+			{ params: { ...base, event: 'gradeChanged' }, body: noGrade },
+			{ params: { ...base, event: 'gradeChanged' }, body: host('B') },
+		]);
+		expect(gc).toEqual([[], []]);
+		const th = { ...base, event: 'gradeBelowThreshold', thresholdGrade: 'A' };
+		const out = await sequence([
+			{ params: th, body: noGrade },
+			{ params: th, body: host('F') },
+			{ params: th, body: host('F') },
+		]);
+		expect(out).toEqual([[], [], []]);
+	});
 
 	it('records a host-specific 400 as an error', async () => {
 		const staticData = {};
@@ -160,7 +218,8 @@ describe('trigger review scenarios', () => {
 		const t0 = Date.now();
 		const ctx = fakePoll({
 			params: { ...base, hosts: ['a.example.com', 'b.example.com'], event: 'gradeChanged' },
-			responses: () => {
+			responses: ({ url }) => {
+				if (url.endsWith('/info')) return { statusCode: 200, body: { newAssessmentCoolOff: 2000 } };
 				calls.push(Date.now() - t0);
 				return ok(fixtures.dns());
 			},
@@ -169,6 +228,30 @@ describe('trigger review scenarios', () => {
 		await vi.advanceTimersByTimeAsync(5_000);
 		expect(await done).toBeNull();
 		expect(calls).toHaveLength(2);
-		expect(calls[1] - calls[0]).toBeGreaterThanOrEqual(1_100);
+		expect(calls[1] - calls[0]).toBe(2_100); // newAssessmentCoolOff from /info + 100 ms
+	});
+
+	it('does not wait for hosts that were already pending, or after the last host', async () => {
+		vi.useFakeTimers();
+		const staticData = {};
+		const params = { ...base, hosts: ['a.example.com', 'b.example.com'], event: 'gradeChanged' };
+		const infoCalls: number[] = [];
+		const responses: Responder = ({ url }) => {
+			if (url.endsWith('/info')) {
+				infoCalls.push(1);
+				return { statusCode: 200, body: { newAssessmentCoolOff: 1000 } };
+			}
+			return ok(fixtures.inProgress());
+		};
+		const first = poll(fakePoll({ params, staticData, responses }));
+		await vi.advanceTimersByTimeAsync(5_000);
+		await first;
+		expect(infoCalls).toHaveLength(1);
+
+		// Both hosts are pending now: the second poll must not wait or read /info at all.
+		const t0 = Date.now();
+		await poll(fakePoll({ params, staticData, responses }));
+		expect(Date.now() - t0).toBe(0);
+		expect(infoCalls).toHaveLength(1);
 	});
 });
