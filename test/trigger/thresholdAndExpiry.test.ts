@@ -57,6 +57,9 @@ describe('SSL Labs Trigger — grade below threshold', () => {
 		const out = await sequence({ ...params, thresholdGrade: 'F' }, [host('F'), host('T')]);
 		expect(out[1]).toHaveLength(1);
 		expect(out[1][0]).toMatchObject({ grade: 'T' });
+		const m = await sequence({ ...params, thresholdGrade: 'T' }, [host('T'), host('M')]);
+		expect(m[1]).toHaveLength(1);
+		expect(m[1][0]).toMatchObject({ grade: 'M' });
 	});
 
 	it('does not fire on the baseline even when already below', async () => {

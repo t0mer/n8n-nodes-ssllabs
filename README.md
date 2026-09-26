@@ -172,10 +172,15 @@ Output items use the same Summary shape as the action node, plus an `event` fiel
 
 How the trigger behaves:
 
-- **First run is a baseline.** The first result for each host is stored and nothing is emitted, even if the host is already below the threshold or its certificate is already expiring.
+- **First run is a baseline.** The first result for each host is stored and nothing is emitted.
+  - A certificate that is already expiring at the baseline alerts on the **next** poll.
+  - A host that is already below the threshold does not alert, because it never crossed it. It alerts the next time it crosses after recovering.
+  - Changing the threshold, or switching to a different event, starts a new silent baseline for that event.
 - **Fetch Test Event** (manual mode) returns the current summary of each host with `event: "test"`, so you can map fields. It does not change the stored state.
 - Hosts whose assessment is still running are marked as pending and checked again on the next poll.
-- When SSL Labs replies 429, 503 or 529, the poll stops quietly. The remaining hosts are checked first on the next poll.
+- Days until expiry are recomputed on every poll from the certificate's `notAfter` date.
+- When SSL Labs is busy (429, 503 or 529), returns a server error, or can't be reached, the poll stops quietly. The remaining hosts are checked first on the next poll. A host-specific 4xx is recorded as an error for that host.
+- After a call that starts a new assessment, the trigger waits the cool-off before checking the next host.
 - The stored state is versioned (`stateVersion: 1`).
 
 ## Rate limits and timing

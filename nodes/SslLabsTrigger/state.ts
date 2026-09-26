@@ -3,6 +3,14 @@ import type { Summary, SummaryCertificate } from '../../shared/types';
 
 export const STATE_VERSION = 1;
 
+const DAY_MS = 86_400_000;
+
+/** Whole days from `now` until an ISO date; recomputed each poll so stored certificates don't go stale. */
+function daysUntil(iso: string | null | undefined, now: number): number | null {
+	const ms = iso ? Date.parse(iso) : Number.NaN;
+	return Number.isNaN(ms) ? null : Math.floor((ms - now) / DAY_MS);
+}
+
 export type TriggerEvent = 'gradeChanged' | 'gradeBelowThreshold' | 'certificateExpiring';
 
 export interface HostState {
@@ -111,48 +119,55 @@ export function applyResult(
 		events.push({ ...summary, event: 'gradeChanged', previousGrade: prev.grade });
 	}
 
-	// Threshold: fire once on crossing below it; re-arm when the grade recovers.
-	let belowThreshold = prev?.belowThreshold ?? false;
-	if (summary.grade !== null) {
-		const below = isWorseThan(summary.grade, config.thresholdGrade);
-		const sameThreshold = prev?.threshold === config.thresholdGrade;
-		if (
-			!baseline &&
-			sameThreshold &&
-			config.event === 'gradeBelowThreshold' &&
-			below &&
-			!belowThreshold
-		) {
-			events.push({
-				...summary,
-				event: 'gradeBelowThreshold',
-				previousGrade: prev.grade,
-				thresholdGrade: config.thresholdGrade,
-			});
+	// Threshold (only tracked while that event is selected): fire once on crossing below it and
+	// re-arm when the grade recovers. A new or changed threshold starts from a silent baseline.
+	let threshold: string | null = null;
+	let belowThreshold = false;
+	if (config.event === 'gradeBelowThreshold') {
+		threshold = config.thresholdGrade;
+		const tracked = !baseline && prev.threshold === config.thresholdGrade;
+		belowThreshold = tracked ? prev.belowThreshold : false;
+		if (summary.grade !== null) {
+			const below = isWorseThan(summary.grade, config.thresholdGrade);
+			if (tracked && below && !belowThreshold) {
+				events.push({
+					...summary,
+					event: 'gradeBelowThreshold',
+					previousGrade: prev.grade,
+					thresholdGrade: config.thresholdGrade,
+				});
+			}
+			belowThreshold = below;
 		}
-		belowThreshold = below;
 	}
 
-	// Certificate expiry: fire once per certificate; a new certificate re-arms.
+	// Certificate expiry: fire once per certificate; a new certificate re-arms. A certificate is
+	// only marked alerted when an alert is actually emitted, so one that is already expiring at
+	// the baseline (or when this event gets selected later) still alerts on the next poll.
 	const certificate = summary.certificate ?? prev?.certificate ?? null;
 	const newCert = (certificate?.fingerprint ?? null) !== (prev?.certificate?.fingerprint ?? null);
 	let certAlerted = newCert ? false : (prev?.certAlerted ?? false);
-	const days = certificate?.daysUntilExpiry;
-	if (typeof days === 'number' && days <= config.daysBeforeExpiry && !certAlerted) {
-		if (!baseline && config.event === 'certificateExpiring') {
-			events.push({
-				...summary,
-				event: 'certificateExpiring',
-				...(newCert && prev?.certificate ? { previousCertificate: prev.certificate } : {}),
-			});
-		}
+	const days = daysUntil(certificate?.notAfter, now);
+	if (
+		!baseline &&
+		config.event === 'certificateExpiring' &&
+		!certAlerted &&
+		days !== null &&
+		days <= config.daysBeforeExpiry
+	) {
+		events.push({
+			...summary,
+			certificate: certificate && { ...certificate, daysUntilExpiry: days },
+			event: 'certificateExpiring',
+			...(newCert && prev?.certificate ? { previousCertificate: prev.certificate } : {}),
+		});
 		certAlerted = true;
 	}
 
 	state.hosts[summary.host] = {
 		grade: summary.grade ?? prev?.grade ?? null,
 		testTime: summary.testTime,
-		threshold: config.thresholdGrade,
+		threshold,
 		belowThreshold,
 		certificate,
 		certAlerted,

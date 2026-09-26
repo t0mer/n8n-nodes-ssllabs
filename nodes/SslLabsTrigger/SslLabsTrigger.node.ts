@@ -6,8 +6,9 @@ import type {
 	INodeTypeDescription,
 	IPollFunctions,
 } from 'n8n-workflow';
-import { NodeApiError, NodeConnectionTypes } from 'n8n-workflow';
+import { NodeApiError, NodeConnectionTypes, sleep } from 'n8n-workflow';
 import { GRADE_ORDER, isGrade } from '../../shared/grades';
+import { DEFAULT_COOL_OFF_MS } from '../../shared/batch';
 import { normalizeHost } from '../../shared/host';
 import { analyze, isFinished } from '../../shared/poll';
 import { toSummary } from '../../shared/summary';
@@ -111,6 +112,13 @@ function readHosts(ctx: IPollFunctions): string[] {
 	return [...new Set(hosts)];
 }
 
+/** 4xx responses other than the busy/unregistered ones: problems specific to the request. */
+function isClientError(error: unknown): boolean {
+	if (!(error instanceof NodeApiError) || isBusyError(error)) return false;
+	const status = Number(error.httpCode);
+	return status >= 400 && status < 500;
+}
+
 function isUnregistered(error: unknown): boolean {
 	return error instanceof NodeApiError && error.message === UNREGISTERED_EMAIL_MESSAGE;
 }
@@ -150,7 +158,9 @@ export class SslLabsTrigger implements INodeType {
 			// "Fetch Test Event": show the current summary of each host, without touching state.
 			const items: INodeExecutionData[] = [];
 			for (const host of hosts) {
-				items.push({ json: { ...toSummary(await analyzeOnce(host)), event: 'test' } });
+				items.push({
+					json: { ...toSummary({ ...(await analyzeOnce(host)), host }), event: 'test' },
+				});
 			}
 			return items.length ? [items] : null;
 		}
@@ -176,21 +186,33 @@ export class SslLabsTrigger implements INodeType {
 			try {
 				result = await analyzeOnce(host);
 			} catch (error) {
-				if (isBusyError(error)) break; // SSL Labs is busy: try the rest next poll.
 				if (isUnregistered(error)) {
 					fatal = error as NodeApiError;
 					break;
 				}
-				const message = (error as Error).message;
-				const summary = toSummary({ host, status: 'ERROR', statusMessage: message });
+				// Busy (429/503/529), server or network trouble: try the rest next poll.
+				if (!isClientError(error)) break;
+				// A 4xx for this host is a real, host-specific problem: record it.
+				const summary = toSummary({
+					host,
+					status: 'ERROR',
+					statusMessage: (error as Error).message,
+				});
 				emitted.push(...applyResult(state, summary, config, Date.now()));
 				continue;
 			}
+			// Key state by the configured host, whatever form the API echoes back.
+			const summary = toSummary({ ...result, host });
 			if (!isFinished(result)) {
+				const wasPending = state.hosts[host]?.pending === true;
 				markPending(state, host, Date.now());
+				// This call probably started a new assessment: respect the cool-off before the next.
+				if (!wasPending && host !== ordered[ordered.length - 1]) {
+					await sleep(DEFAULT_COOL_OFF_MS);
+				}
 				continue;
 			}
-			emitted.push(...applyResult(state, toSummary(result), config, Date.now()));
+			emitted.push(...applyResult(state, summary, config, Date.now()));
 		}
 
 		if (fatal) throw fatal;
