@@ -208,6 +208,8 @@ export class SslLabsTrigger implements INodeType {
 		const emitted: EventItem[] = [];
 		let fatal: NodeApiError | NodeOperationError | undefined;
 		let checked = 0;
+		let transientFailures = 0;
+		let lastTransient: unknown;
 		for (const [index, host] of ordered.entries()) {
 			// Always check at least one host, then stay within the poll budget.
 			if (checked++ > 0 && Date.now() - started >= budgetMs * BUDGET_SHARE) break;
@@ -226,7 +228,11 @@ export class SslLabsTrigger implements INodeType {
 				// Move the host to the back of the queue so it can't starve the others.
 				touch(state, host, Date.now());
 				if (failure === 'busy') break; // SSL Labs is busy: try the rest next poll.
-				if (failure === 'transient') continue;
+				if (failure === 'transient') {
+					transientFailures++;
+					lastTransient = error;
+					continue;
+				}
 				const summary = toSummary({
 					host,
 					status: 'ERROR',
@@ -247,6 +253,16 @@ export class SslLabsTrigger implements INodeType {
 			emitted.push(...applyResult(state, summary, config, Date.now()));
 		}
 
+		// Every host failed at the network/server level: most likely a bad base URL or an outage.
+		// Surface it rather than silently returning nothing forever.
+		if (!fatal && ordered.length > 0 && transientFailures === ordered.length) {
+			fatal =
+				lastTransient instanceof NodeApiError
+					? lastTransient
+					: new NodeOperationError(this.getNode(), lastTransient as Error, {
+							description: 'Check the Base URL in the SSL Labs API credential and your network.',
+						});
+		}
 		if (fatal) throw fatal;
 
 		// Forget hosts that were removed from the list.

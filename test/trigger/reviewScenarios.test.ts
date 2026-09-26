@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { IPollFunctions } from 'n8n-workflow';
+import { NodeApiError, type IPollFunctions } from 'n8n-workflow';
 import { SslLabsTrigger } from '../../nodes/SslLabsTrigger/SslLabsTrigger.node';
 import type { Host } from '../../shared/types';
 import { fixtures } from '../fixtures';
-import { fakePoll, type FakeResponse, type Responder } from '../helpers';
+import { fakeNode, fakePoll, type FakeResponse, type Responder } from '../helpers';
 
 const poll = (ctx: ReturnType<typeof fakePoll>) =>
 	new SslLabsTrigger().poll.call(ctx as unknown as IPollFunctions);
@@ -186,6 +186,56 @@ describe('trigger review scenarios', () => {
 			{ params: th, body: host('F') },
 		]);
 		expect(out).toEqual([[], [], []]);
+	});
+
+	it('rotates past a persistently failing host when the budget allows one host per poll', async () => {
+		const staticData = {};
+		const hosts = ['a.example.com', 'x.example.com', 'b.example.com'];
+		const seen: string[] = [];
+		for (let round = 0; round < 3; round++) {
+			await poll(
+				fakePoll({
+					params: { ...base, hosts, event: 'gradeChanged' },
+					staticData,
+					pollBudgetMs: 0,
+					responses: ({ qs }) => {
+						const host = String(qs?.host);
+						seen.push(host);
+						return host === 'x.example.com' ? { statusCode: 500 } : ok(host_('A', host));
+					},
+				}),
+			);
+		}
+		expect([...seen].sort()).toEqual([...hosts].sort());
+	});
+
+	it('fails the poll when every host hits a network error (e.g. a mistyped base URL)', async () => {
+		const networkError = () => {
+			// n8n wraps connection failures in a NodeApiError without an HTTP code.
+			throw new NodeApiError(fakeNode, { message: 'getaddrinfo ENOTFOUND api.ssllabs.co' });
+		};
+		const ctx = fakePoll({
+			params: { ...base, hosts: ['a.example.com', 'b.example.com'], event: 'gradeChanged' },
+			responses: networkError,
+		});
+		await expect(poll(ctx)).rejects.toThrow();
+		expect(ctx.helpers.httpRequestWithAuthentication).toHaveBeenCalledTimes(2);
+	});
+
+	it('keeps a first ERROR silent even after a busy poll created the host entry', async () => {
+		const staticData = {};
+		const params = { ...base, event: 'gradeChanged', options: { emitErrors: true } };
+		const error = (message: string): Host => ({
+			...fixtures.error(),
+			host: 'example.com',
+			statusMessage: message,
+		});
+		await poll(fakePoll({ params, staticData, responses: [{ statusCode: 429 }] }));
+		expect(
+			await poll(fakePoll({ params, staticData, responses: [ok(error('first'))] })),
+		).toBeNull();
+		const out = await poll(fakePoll({ params, staticData, responses: [ok(error('second'))] }));
+		expect(out?.[0][0].json).toMatchObject({ event: 'assessmentError', statusMessage: 'second' });
 	});
 
 	it('records a host-specific 400 as an error', async () => {

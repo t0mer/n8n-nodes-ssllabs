@@ -103,7 +103,9 @@ export function applyResult(
 
 	if (summary.status === 'ERROR') {
 		const error = summary.statusMessage ?? 'Assessment failed';
-		if (config.emitErrors && prev && prev.error !== error) {
+		// Only after a first real result: entries created by touch/markPending are still a baseline.
+		const hadResult = !!prev && (prev.testTime !== null || prev.error !== null);
+		if (config.emitErrors && hadResult && prev.error !== error) {
 			events.push({ ...summary, event: 'assessmentError' });
 		}
 		state.hosts[summary.host] = {
