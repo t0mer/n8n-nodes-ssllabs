@@ -5,6 +5,7 @@ import type {
 	INodeTypeDescription,
 } from 'n8n-workflow';
 import { NodeApiError, NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import { registration } from './resources/registration';
 import { service } from './resources/service';
 import type { ResourceModule } from './shared';
 
@@ -13,7 +14,7 @@ import type { ResourceModule } from './shared';
  * cadence changes, timeouts, retries and batch-level concurrency control.
  */
 
-const resources: Record<string, ResourceModule> = { service };
+const resources: Record<string, ResourceModule> = { registration, service };
 
 function toNodeError(ctx: IExecuteFunctions, error: Error, itemIndex: number) {
 	if (error instanceof NodeApiError || error instanceof NodeOperationError) {
@@ -36,14 +37,29 @@ export class SslLabs implements INodeType {
 		usableAsTool: true,
 		inputs: [NodeConnectionTypes.Main],
 		outputs: [NodeConnectionTypes.Main],
-		credentials: [{ name: 'sslLabsApi', required: true }],
+		credentials: [
+			{
+				name: 'sslLabsApi',
+				required: true,
+				displayOptions: { hide: { resource: ['registration'] } },
+			},
+			{
+				// Optional here: registration works without a credential, but uses its base URL if set.
+				name: 'sslLabsApi',
+				required: false,
+				displayOptions: { show: { resource: ['registration'] } },
+			},
+		],
 		properties: [
 			{
 				displayName: 'Resource',
 				name: 'resource',
 				type: 'options',
 				noDataExpression: true,
-				options: [{ name: 'Service', value: 'service' }],
+				options: [
+					{ name: 'Registration', value: 'registration' },
+					{ name: 'Service', value: 'service' },
+				],
 				default: 'service',
 			},
 			...Object.values(resources).flatMap((r) => r.properties),

@@ -152,12 +152,14 @@ export function toApiError(
 	statusCode: number,
 	body: unknown,
 	itemIndex?: number,
+	authenticated = true,
 ): NodeApiError {
 	const detail = describeApiErrors(body);
 	const errorResponse = (
 		body && typeof body === 'object' ? body : { message: detail || String(statusCode) }
 	) as JsonObject;
-	if (isUnregisteredEmail(statusCode, body)) {
+	// Only authenticated calls send the email header; on /register an email error is a validation error.
+	if (authenticated && isUnregisteredEmail(statusCode, body)) {
 		return new NodeApiError(ctx.getNode(), errorResponse, {
 			message: UNREGISTERED_EMAIL_MESSAGE,
 			description: detail || undefined,
@@ -212,7 +214,7 @@ export async function sslLabsRequest<T = unknown>(
 		}
 		const plan = policy ? retryPlan(policy, response.statusCode) : { retries: 0, waitMs: 0 };
 		if (!policy || attempt >= plan.retries) {
-			throw toApiError(ctx, response.statusCode, body, request.itemIndex);
+			throw toApiError(ctx, response.statusCode, body, request.itemIndex, authenticate);
 		}
 		// Linear backoff with jitter, as the API docs recommend randomising waits.
 		const waitMs = Math.round(plan.waitMs * (attempt + 1) * (0.75 + Math.random() * 0.5));
