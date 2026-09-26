@@ -54,12 +54,14 @@ const properties: INodeProperties[] = [
 		displayName: 'Mode',
 		name: 'mode',
 		type: 'options',
+		noDataExpression: true,
 		displayOptions: { show },
 		options: [
 			{
 				name: 'Get Status',
 				value: 'getStatus',
-				description: 'Make a single call and return whatever state exists',
+				description:
+					'Make a single call and return the current state. SSL Labs starts an assessment if none exists (or the cache is too old).',
 			},
 			{
 				name: 'Start Only',
@@ -148,7 +150,7 @@ const properties: INodeProperties[] = [
 				name: 'initialPollInterval',
 				type: 'number',
 				default: 5,
-				typeOptions: { minValue: 1 },
+				typeOptions: { minValue: 5 },
 				description: 'How often to check while the assessment is resolving DNS',
 				displayOptions: { show: { '/mode': ['waitForResult'] } },
 			},
@@ -157,7 +159,7 @@ const properties: INodeProperties[] = [
 				name: 'pollInterval',
 				type: 'number',
 				default: 10,
-				typeOptions: { minValue: 1 },
+				typeOptions: { minValue: 5 },
 				description: 'How often to check once the assessment is in progress',
 				displayOptions: { show: { '/mode': ['waitForResult'] } },
 			},
@@ -229,7 +231,7 @@ export async function analyzeItem(
 			timeoutMs: Number(options.timeout ?? 15) * 60_000,
 		});
 	} else {
-		if (mode === 'startOnly') await hooks.beforeStart?.();
+		await hooks.beforeStart?.();
 		result = await analyze(ctx, params, true, callOptions);
 	}
 
@@ -263,18 +265,16 @@ export async function executeAnalyze(ctx: IExecuteFunctions): Promise<INodeExecu
 
 	let concurrency = 1;
 	let gate: ((signal?: AbortSignal) => Promise<void>) | undefined;
+	// Every mode may start assessments (even Get Status, when nothing is cached), so all
+	// batches respect the free slots and the cool-off.
 	if (count > 1) {
-		if (readMode(ctx, 0) === 'getStatus') {
-			concurrency = batchConcurrency(requested, undefined, undefined);
-		} else {
-			const { body: info } = await sslLabsRequest<Info>(ctx, {
-				path: 'info',
-				abortSignal: cancelSignal,
-			});
-			concurrency = batchConcurrency(requested, info.maxAssessments, info.currentAssessments);
-			const coolOff = Number(info.newAssessmentCoolOff);
-			gate = createStartGate(coolOff > 0 ? coolOff + 100 : DEFAULT_COOL_OFF_MS);
-		}
+		const { body: info } = await sslLabsRequest<Info>(ctx, {
+			path: 'info',
+			abortSignal: cancelSignal,
+		});
+		concurrency = batchConcurrency(requested, info.maxAssessments, info.currentAssessments);
+		const coolOff = Number(info.newAssessmentCoolOff);
+		gate = createStartGate(coolOff > 0 ? coolOff + 100 : DEFAULT_COOL_OFF_MS);
 	}
 
 	const { results, firstError } = await runPool(

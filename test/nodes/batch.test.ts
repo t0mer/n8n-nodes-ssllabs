@@ -104,14 +104,35 @@ describe('Analyze batching', () => {
 		expect(s.starts.map((st) => st.host)).not.toContain('e.example.com');
 	});
 
-	it('skips info for Get Status batches', async () => {
-		const s = scenario({});
+	it('applies info limits and the cool-off to Get Status batches too', async () => {
+		const s = scenario({ maxAssessments: 25, currentAssessments: 23, newAssessmentCoolOff: 1000 });
 		const ctx = fakeExecute({ items: items({ mode: 'getStatus' }), responses: s.responder });
-		const [out] = await run(ctx);
+		const done = run(ctx);
+		await vi.advanceTimersByTimeAsync(30_000);
+		const [out] = await done;
 		expect(out).toHaveLength(5);
 		const urls = ctx.helpers.httpRequestWithAuthentication.mock.calls.map(
 			(c) => (c[1] as { url: string }).url,
 		);
-		expect(urls.some((u) => u.endsWith('/info'))).toBe(false);
+		expect(urls.filter((u) => u.endsWith('/info'))).toHaveLength(1);
+		const gaps = s.starts.slice(1).map((st, i) => st.at - s.starts[i].at);
+		expect(Math.min(...gaps)).toBeGreaterThanOrEqual(1100);
+	});
+
+	it('stops starting new items and reports cancellation when the execution is cancelled', async () => {
+		const s = scenario({ maxAssessments: 25, currentAssessments: 0, newAssessmentCoolOff: 1000 });
+		const cancel = new AbortController();
+		const ctx = fakeExecute({
+			items: items(),
+			responses: s.responder,
+			cancelSignal: cancel.signal,
+		});
+		const done = run(ctx);
+		const assertion = expect(done).rejects.toThrow();
+		await vi.advanceTimersByTimeAsync(1_500);
+		cancel.abort();
+		await vi.advanceTimersByTimeAsync(60_000);
+		await assertion;
+		expect(s.starts.length).toBeLessThan(5);
 	});
 });

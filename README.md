@@ -65,7 +65,7 @@ This operation assesses a host. The **Host** field takes a bare hostname; if you
 |---|---|
 | **Wait for Result** (default) | Starts an assessment (or reuses a cached one) and polls until it is READY or ERROR, or the timeout passes. |
 | **Start Only** | Starts the assessment and returns right away with its current status. Use it for long batches that you split across workflow runs. |
-| **Get Status** | Makes a single call without forcing a new scan and returns whatever state exists. |
+| **Get Status** | Makes a single call without forcing a new scan and returns the current state. Note that SSL Labs itself starts an assessment when nothing fresh enough is cached. |
 
 **Parameters**
 
@@ -83,8 +83,8 @@ This operation assesses a host. The **Host** field takes a bare hostname; if you
 | Detail Level | Summary | **Summary** returns the compact shape below. **Full** returns the raw SSL Labs `Host` object plus `reportUrl`. |
 | Fail on Assessment Error | on | When off, an assessment that ends in ERROR is returned as an item instead of failing the node. |
 | Ignore Certificate Mismatch | off | Continue even when the certificate does not match the hostname. |
-| Initial Poll Interval (Seconds) | 5 | How often to poll while the status is `DNS`. |
-| Poll Interval (Seconds) | 10 | How often to poll once the status is `IN_PROGRESS`. |
+| Initial Poll Interval (Seconds) | 5 | How often to poll while the status is `DNS` (minimum 5). |
+| Poll Interval (Seconds) | 10 | How often to poll once the status is `IN_PROGRESS` (minimum 5). |
 | Publish Results | **off** | ⚠️ **Published results appear on the public SSL Labs boards.** Leave this off unless you really want that. |
 | Timeout (Minutes) | 15 | How long Wait for Result keeps polling before it fails. |
 
