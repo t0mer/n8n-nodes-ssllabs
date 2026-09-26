@@ -6,7 +6,7 @@ import type {
 	IPollFunctions,
 	JsonObject,
 } from 'n8n-workflow';
-import { NodeApiError, sleep as n8nSleep } from 'n8n-workflow';
+import { NodeApiError, NodeOperationError, sleep as n8nSleep } from 'n8n-workflow';
 
 export const DEFAULT_BASE_URL = 'https://api.ssllabs.com/api/v4';
 export const CREDENTIAL_TYPE = 'sslLabsApi';
@@ -83,6 +83,10 @@ export interface SslLabsResponse<T> {
 export function normalizeBaseUrl(url: unknown): string {
 	const value = typeof url === 'string' ? url.trim() : '';
 	return (value || DEFAULT_BASE_URL).replace(/\/+$/, '');
+}
+
+function isHttpsUrl(url: string): boolean {
+	return /^https:\/\/[^/\s]+/i.test(url);
 }
 
 async function resolveBaseUrl(ctx: SslLabsContext, required: boolean): Promise<string> {
@@ -188,6 +192,17 @@ export async function sslLabsRequest<T = unknown>(
 ): Promise<SslLabsResponse<T>> {
 	const authenticate = request.authenticate ?? true;
 	const baseUrl = await resolveBaseUrl(ctx, authenticate);
+	if (!isHttpsUrl(baseUrl)) {
+		// The email header and registration details must never travel in cleartext.
+		throw new NodeOperationError(
+			ctx.getNode(),
+			`Base URL must start with https:// (got "${baseUrl}")`,
+			{
+				itemIndex: request.itemIndex,
+				description: `Fix the SSL Labs API credential. The default is ${DEFAULT_BASE_URL}.`,
+			},
+		);
+	}
 	const policy: RetryPolicy | null =
 		request.retry === false ? null : { ...DEFAULT_RETRY_POLICY, ...request.retry };
 	const options: IHttpRequestOptions = {

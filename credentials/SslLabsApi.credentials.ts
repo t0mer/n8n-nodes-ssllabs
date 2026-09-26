@@ -32,7 +32,7 @@ export class SslLabsApi implements ICredentialType {
 			type: 'string',
 			default: 'https://api.ssllabs.com/api/v4',
 			description:
-				'API entry point. Use https://api.dev.ssllabs.com/api/v4 for the development server (lower limits, no availability guarantee).',
+				'API entry point (HTTPS only). Use https://api.dev.ssllabs.com/api/v4 for the development server (lower limits, no availability guarantee).',
 		},
 	];
 
@@ -47,7 +47,8 @@ export class SslLabsApi implements ICredentialType {
 
 	test: ICredentialTestRequest = {
 		request: {
-			baseURL: '={{$credentials.baseUrl.replace(/\\/+$/, "")}}',
+			baseURL:
+				'={{($credentials.baseUrl || "https://api.ssllabs.com/api/v4").trim().replace(/\\/+$/, "")}}',
 			url: '/info',
 			method: 'GET',
 		},

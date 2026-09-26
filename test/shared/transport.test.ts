@@ -164,3 +164,26 @@ describe('sslLabsRequest deadline', () => {
 		expect(ctx.helpers.httpRequestWithAuthentication).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('base URL', () => {
+	it.each(['http://api.ssllabs.com/api/v4', 'ftp://x', 'api.ssllabs.com'])(
+		'rejects %s',
+		async (baseUrl) => {
+			const ctx = fakeContext([{ statusCode: 200 }], { email: 'a@b.c', baseUrl });
+			await expect(sslLabsRequest(asCtx(ctx), { path: 'info' })).rejects.toThrow(
+				/must start with https/,
+			);
+			expect(ctx.helpers.httpRequestWithAuthentication).not.toHaveBeenCalled();
+		},
+	);
+
+	it('falls back to the default for an empty base URL', async () => {
+		const ctx = fakeContext([{ statusCode: 200, body: {} }], { email: 'a@b.c', baseUrl: '  ' });
+		await sslLabsRequest(asCtx(ctx), { path: 'info' });
+		const [, options] = ctx.helpers.httpRequestWithAuthentication.mock.calls[0] as unknown as [
+			string,
+			{ url: string },
+		];
+		expect(options.url).toBe(`${DEFAULT_BASE_URL}/info`);
+	});
+});
