@@ -6,6 +6,7 @@ import type {
 } from 'n8n-workflow';
 import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
 import { assessment } from './resources/assessment';
+import { endpoint } from './resources/endpoint';
 import { registration } from './resources/registration';
 import { service } from './resources/service';
 import { errorItem, toNodeError, type ResourceModule } from './shared';
@@ -15,7 +16,7 @@ import { errorItem, toNodeError, type ResourceModule } from './shared';
  * cadence changes, timeouts, retries and batch-level concurrency control.
  */
 
-const resources: Record<string, ResourceModule> = { assessment, registration, service };
+const resources: Record<string, ResourceModule> = { assessment, endpoint, registration, service };
 
 export class SslLabs implements INodeType {
 	description: INodeTypeDescription = {
@@ -51,6 +52,7 @@ export class SslLabs implements INodeType {
 				noDataExpression: true,
 				options: [
 					{ name: 'Assessment', value: 'assessment' },
+					{ name: 'Endpoint', value: 'endpoint' },
 					{ name: 'Registration', value: 'registration' },
 					{ name: 'Service', value: 'service' },
 				],
