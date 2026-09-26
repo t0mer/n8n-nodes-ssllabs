@@ -152,6 +152,15 @@ describe('sslLabsRequest retries', () => {
 });
 
 describe('sslLabsRequest deadline', () => {
+	it('still retries when the wait fits before the deadline', async () => {
+		const ctx = fakeContext([{ statusCode: 429 }, { statusCode: 200, body: { ok: 1 } }]);
+		const res = await sslLabsRequest(asCtx(ctx), {
+			path: 'analyze',
+			retry: { rateLimitWaitMs: 100, deadline: Date.now() + 60_000, sleep: async () => {} },
+		});
+		expect(res.body).toEqual({ ok: 1 });
+	});
+
 	it('stops retrying when the next wait would pass the deadline', async () => {
 		const ctx = fakeContext([{ statusCode: 529 }, { statusCode: 200 }]);
 		const sleeps: number[] = [];

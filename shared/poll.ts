@@ -108,7 +108,8 @@ export async function waitForAssessment(
 	// Retry waits inside a call must not run past the timeout either.
 	const callOptions: AnalyzeCallOptions = {
 		...options,
-		retry: options.retry === false ? false : { ...options.retry, deadline },
+		// Transport compares against the real clock, so derive its deadline from it too.
+		retry: options.retry === false ? false : { ...options.retry, deadline: Date.now() + timeoutMs },
 	};
 
 	await options.beforeStart?.();
