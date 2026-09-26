@@ -273,6 +273,7 @@ export async function executeAnalyze(ctx: IExecuteFunctions): Promise<INodeExecu
 			({ body: info } = await sslLabsRequest<Info>(ctx, {
 				path: 'info',
 				abortSignal: cancelSignal,
+				retry: false,
 			}));
 		} catch {
 			// /info unavailable: fall back to one assessment at a time with the default cool-off.

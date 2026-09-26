@@ -104,6 +104,27 @@ describe('Analyze batching', () => {
 		expect(s.starts.map((st) => st.host)).not.toContain('e.example.com');
 	});
 
+	it('falls back to one assessment at a time when /info fails, without retrying it', async () => {
+		const s = scenario({});
+		let infoCalls = 0;
+		const responder: Responder = (options) => {
+			if (options.url.endsWith('/info')) {
+				infoCalls++;
+				return { statusCode: 503 };
+			}
+			return s.responder(options);
+		};
+		const ctx = fakeExecute({ items: items(), responses: responder });
+		const done = run(ctx);
+		await vi.advanceTimersByTimeAsync(200_000);
+		const [out] = await done;
+		expect(out.map((o) => o.json.status)).toEqual(Array(5).fill('READY'));
+		expect(infoCalls).toBe(1);
+		expect(s.peak()).toBe(1);
+		const gaps = s.starts.slice(1).map((st, i) => st.at - s.starts[i].at);
+		expect(Math.min(...gaps)).toBeGreaterThanOrEqual(1100);
+	});
+
 	it('applies info limits and the cool-off to Get Status batches too', async () => {
 		const s = scenario({ maxAssessments: 25, currentAssessments: 23, newAssessmentCoolOff: 1000 });
 		const ctx = fakeExecute({ items: items({ mode: 'getStatus' }), responses: s.responder });
