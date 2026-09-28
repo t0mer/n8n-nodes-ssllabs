@@ -1,7 +1,7 @@
 {
   "name": "@t0mer/n8n-nodes-ssllabs",
   "version": "2026.9.0",
-  "description": "n8n community node for the Qualys SSL Labs API v4: run SSL/TLS assessments, fetch grades, and watch for grade or certificate changes.",
+  "description": "n8n community nodes for the Qualys SSL Labs API v4: run SSL/TLS server assessments, get grades and certificate details, and get alerts on grade drops or expiring certificates.",
   "license": "MIT",
   "homepage": "https://github.com/t0mer/n8n-nodes-ssllabs#readme",
   "bugs": {
@@ -15,9 +15,13 @@
     "n8n-community-node-package",
     "n8n",
     "ssllabs",
+    "ssl-labs",
+    "qualys",
     "ssl",
     "tls",
+    "ssl-test",
     "certificate",
+    "certificate-monitoring",
     "security"
   ],
   "author": {
