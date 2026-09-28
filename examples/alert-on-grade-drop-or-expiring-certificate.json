@@ -1,0 +1,108 @@
+{
+	"name": "SSL Labs: alert on grade drop or expiring certificate",
+	"nodes": [
+		{
+			"parameters": {
+				"pollTimes": {
+					"item": [
+						{
+							"mode": "everyX",
+							"value": 6,
+							"unit": "hours"
+						}
+					]
+				},
+				"hosts": ["example.com", "www.example.com"],
+				"event": "gradeBelowThreshold",
+				"thresholdGrade": "A",
+				"maxAge": 24,
+				"options": {}
+			},
+			"id": "a25aef0c-b5e4-4925-9a88-de79459f2613",
+			"name": "Grade Below A",
+			"type": "@t0mer/n8n-nodes-ssllabs.sslLabsTrigger",
+			"typeVersion": 1,
+			"position": [0, -100]
+		},
+		{
+			"parameters": {
+				"pollTimes": {
+					"item": [
+						{
+							"mode": "everyX",
+							"value": 6,
+							"unit": "hours"
+						}
+					]
+				},
+				"hosts": ["example.com", "www.example.com"],
+				"event": "certificateExpiring",
+				"daysBeforeExpiry": 21,
+				"maxAge": 24,
+				"options": {}
+			},
+			"id": "dc100433-bd22-4cee-9f1c-7c4c06957ead",
+			"name": "Certificate Expiring in 21 Days",
+			"type": "@t0mer/n8n-nodes-ssllabs.sslLabsTrigger",
+			"typeVersion": 1,
+			"position": [0, 100]
+		},
+		{
+			"parameters": {
+				"select": "channel",
+				"channelId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "#security-alerts"
+				},
+				"text": "={{ $json.event === 'certificateExpiring'\n  ? `:warning: Certificate for ${$json.host} expires in ${$json.certificate.daysUntilExpiry} day(s) (${$json.certificate.notAfter})`\n  : `:rotating_light: SSL Labs grade for ${$json.host} dropped to ${$json.grade} (was ${$json.previousGrade ?? 'unknown'}, threshold ${$json.thresholdGrade})` }}\nReport: {{ $json.reportUrl }}",
+				"otherOptions": {}
+			},
+			"id": "49025f2a-6a63-478c-be7a-a0b2048ce1ca",
+			"name": "Send Slack Alert",
+			"type": "n8n-nodes-base.slack",
+			"typeVersion": 2.3,
+			"position": [280, 0]
+		},
+		{
+			"parameters": {
+				"content": "## Grade drop and certificate expiry alerts\nTwo SSL Labs Triggers watch the same hosts every 6 hours. One fires once when a grade falls below A (and re-arms when it recovers). The other fires once per certificate that expires within 21 days.\n\nThe first poll only records a baseline and emits nothing. Swap the Slack node for Telegram, email or WhatsApp and reuse the same message expression.",
+				"height": 240,
+				"width": 460
+			},
+			"id": "479faecf-6684-4838-a5d5-3fa4ee52224a",
+			"name": "Note",
+			"type": "n8n-nodes-base.stickyNote",
+			"typeVersion": 1,
+			"position": [-60, -380]
+		}
+	],
+	"connections": {
+		"Grade Below A": {
+			"main": [
+				[
+					{
+						"node": "Send Slack Alert",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Certificate Expiring in 21 Days": {
+			"main": [
+				[
+					{
+						"node": "Send Slack Alert",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"pinData": {},
+	"settings": {
+		"executionOrder": "v1"
+	}
+}

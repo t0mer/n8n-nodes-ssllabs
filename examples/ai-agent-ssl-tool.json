@@ -1,0 +1,103 @@
+{
+	"name": "SSL Labs: AI agent SSL/TLS tool",
+	"nodes": [
+		{
+			"parameters": {
+				"options": {}
+			},
+			"id": "0b6b4db5-8783-4125-9108-4287bb128f9b",
+			"name": "When Chat Message Received",
+			"type": "@n8n/n8n-nodes-langchain.chatTrigger",
+			"typeVersion": 1.1,
+			"position": [0, 0],
+			"webhookId": "db7a04c3-f832-4415-91ad-ac7d6a187443"
+		},
+		{
+			"parameters": {
+				"options": {
+					"systemMessage": "You are a defensive TLS assistant. You answer questions like \"what grade does my site get?\" or \"when does my certificate expire?\" about the user's own hosts using the SSL Labs tool.\n\n- Pass bare hostnames (example.com), not URLs or IP addresses.\n- Report the grade (worst endpoint), per-endpoint grades, warnings, the certificate issuer and expiry date, and the report URL.\n- If the status is DNS or IN_PROGRESS, say the assessment is still running and suggest asking again in a few minutes.\n- Explain what typically lowers a grade (old protocols, weak ciphers, missing HSTS, chain issues) and suggest concrete fixes, but do not invent findings the tool did not return.\n- Only assess hosts the user owns or is authorized to test."
+				}
+			},
+			"id": "8cd653ca-e64b-425e-9e5d-095892f17507",
+			"name": "SSL Agent",
+			"type": "@n8n/n8n-nodes-langchain.agent",
+			"typeVersion": 1.7,
+			"position": [240, 0]
+		},
+		{
+			"parameters": {
+				"model": {
+					"__rl": true,
+					"mode": "list",
+					"value": "gpt-4o-mini"
+				},
+				"options": {}
+			},
+			"id": "3c076146-e46d-435e-b3e0-e76562239448",
+			"name": "OpenAI Chat Model",
+			"type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+			"typeVersion": 1.2,
+			"position": [140, 220]
+		},
+		{
+			"parameters": {
+				"descriptionType": "manual",
+				"toolDescription": "Get the Qualys SSL Labs SSL/TLS assessment of a public hostname. Returns status (READY, DNS, IN_PROGRESS or ERROR), the overall grade, per-endpoint grades and warnings, and the leaf certificate with its expiry date. Uses a cached result up to 24 hours old; otherwise starts an assessment and returns its progress. Input must be a hostname.",
+				"resource": "assessment",
+				"operation": "analyze",
+				"host": "={{ $fromAI('host', 'The hostname to assess, for example example.com', 'string') }}",
+				"mode": "getStatus",
+				"useCache": true,
+				"maxAge": 24,
+				"options": {
+					"detailLevel": "summary",
+					"failOnError": false
+				}
+			},
+			"id": "7448b395-06f6-4ba3-bf78-6634461df2b9",
+			"name": "SSL Labs",
+			"type": "@t0mer/n8n-nodes-ssllabs.sslLabsTool",
+			"typeVersion": 1,
+			"position": [380, 220]
+		}
+	],
+	"connections": {
+		"When Chat Message Received": {
+			"main": [
+				[
+					{
+						"node": "SSL Agent",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"OpenAI Chat Model": {
+			"ai_languageModel": [
+				[
+					{
+						"node": "SSL Agent",
+						"type": "ai_languageModel",
+						"index": 0
+					}
+				]
+			]
+		},
+		"SSL Labs": {
+			"ai_tool": [
+				[
+					{
+						"node": "SSL Agent",
+						"type": "ai_tool",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"pinData": {},
+	"settings": {
+		"executionOrder": "v1"
+	}
+}

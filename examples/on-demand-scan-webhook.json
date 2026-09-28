@@ -1,0 +1,91 @@
+{
+	"name": "SSL Labs: on-demand scan webhook",
+	"nodes": [
+		{
+			"parameters": {
+				"httpMethod": "POST",
+				"path": "ssl-scan",
+				"responseMode": "responseNode",
+				"options": {}
+			},
+			"id": "c800bff1-82b9-4276-8423-4dc29d28cd38",
+			"name": "Scan Request",
+			"type": "n8n-nodes-base.webhook",
+			"typeVersion": 2,
+			"position": [0, 0],
+			"webhookId": "f4d59517-2e34-4fc8-8b3a-93cd51973bd9"
+		},
+		{
+			"parameters": {
+				"resource": "assessment",
+				"operation": "analyze",
+				"host": "={{ $json.body.host }}",
+				"mode": "getStatus",
+				"useCache": true,
+				"maxAge": 24,
+				"options": {
+					"detailLevel": "summary",
+					"failOnError": false
+				}
+			},
+			"id": "a563fb2d-b914-4c99-bb03-4f2a21b6950b",
+			"name": "Get Assessment Status",
+			"type": "@t0mer/n8n-nodes-ssllabs.sslLabs",
+			"typeVersion": 1,
+			"position": [220, 0],
+			"onError": "continueRegularOutput"
+		},
+		{
+			"parameters": {
+				"respondWith": "json",
+				"responseBody": "={{ JSON.stringify({ host: $json.host, status: $json.status, ready: $json.status === 'READY', grade: $json.grade ?? null, certificateExpires: $json.certificate?.notAfter ?? null, daysUntilExpiry: $json.certificate?.daysUntilExpiry ?? null, reportUrl: $json.reportUrl ?? null, error: $json.error ?? $json.statusMessage ?? null }) }}",
+				"options": {}
+			},
+			"id": "0142f783-2bfc-4da4-a291-22a65d7a3cd2",
+			"name": "Respond with Result",
+			"type": "n8n-nodes-base.respondToWebhook",
+			"typeVersion": 1.1,
+			"position": [440, 0]
+		},
+		{
+			"parameters": {
+				"content": "## On-demand scan\nPOST `{\"host\": \"example.com\"}` to this webhook. The SSL Labs node makes a single **Get Status** call: it returns a cached result up to 24 hours old, or starts an assessment and returns its progress (`DNS` / `IN_PROGRESS`).\n\nCall again every 30-60 seconds until `ready` is true. This keeps the HTTP request short; assessments take minutes. Only scan hosts you own or are authorized to test.",
+				"height": 260,
+				"width": 460
+			},
+			"id": "7e4dddb6-b111-40f8-a2fe-d1d4b7e04cf3",
+			"name": "Note",
+			"type": "n8n-nodes-base.stickyNote",
+			"typeVersion": 1,
+			"position": [-60, -300]
+		}
+	],
+	"connections": {
+		"Scan Request": {
+			"main": [
+				[
+					{
+						"node": "Get Assessment Status",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Assessment Status": {
+			"main": [
+				[
+					{
+						"node": "Respond with Result",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"pinData": {},
+	"settings": {
+		"executionOrder": "v1"
+	}
+}

@@ -1,0 +1,194 @@
+{
+	"name": "SSL Labs: weekly SSL grade report",
+	"nodes": [
+		{
+			"parameters": {
+				"rule": {
+					"interval": [
+						{
+							"field": "weeks",
+							"triggerAtDay": [1],
+							"triggerAtHour": 7
+						}
+					]
+				}
+			},
+			"id": "ba0b3b50-77f4-44ab-b454-fe2703406000",
+			"name": "Every Monday 07:00",
+			"type": "n8n-nodes-base.scheduleTrigger",
+			"typeVersion": 1.2,
+			"position": [0, 0]
+		},
+		{
+			"parameters": {
+				"jsCode": "// The hosts to assess, one item each. Only list hosts you own or are authorized to test.\nreturn ['example.com', 'www.example.com', 'api.example.com'].map((host) => ({ json: { host } }));"
+			},
+			"id": "b5804def-93fc-4388-9e0f-56d54ce5b3d6",
+			"name": "Hosts to Check",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [220, 0]
+		},
+		{
+			"parameters": {
+				"resource": "assessment",
+				"operation": "analyze",
+				"host": "={{ $json.host }}",
+				"mode": "waitForResult",
+				"useCache": true,
+				"maxAge": 24,
+				"options": {
+					"batchConcurrency": 2,
+					"detailLevel": "summary",
+					"timeout": 30
+				}
+			},
+			"id": "2895514d-92c8-48b8-9967-d0eb54a6cbc3",
+			"name": "Analyze Hosts",
+			"type": "@t0mer/n8n-nodes-ssllabs.sslLabs",
+			"typeVersion": 1,
+			"position": [440, 0],
+			"onError": "continueRegularOutput"
+		},
+		{
+			"parameters": {
+				"jsCode": "// Google Sheets cells cannot hold arrays or objects: flatten the SSL Labs summary.\nreturn $input.all().map(({ json }) => ({\n  json: {\n    host: json.host,\n    status: json.status,\n    grade: json.grade ?? '',\n    bestGrade: json.bestGrade ?? '',\n    hasWarnings: json.hasWarnings ?? false,\n    endpoints: (json.endpoints || []).map((e) => `${e.ipAddress} (${e.grade ?? e.statusMessage ?? 'n/a'})`).join(', '),\n    certificateIssuer: json.certificate?.issuer ?? '',\n    certificateExpires: json.certificate?.notAfter ?? '',\n    daysUntilExpiry: json.certificate?.daysUntilExpiry ?? '',\n    testTime: json.testTime ?? '',\n    reportUrl: json.reportUrl,\n    error: json.error ?? '',\n  },\n}));"
+			},
+			"id": "a3dc594d-9f3a-491d-af79-2b3a260c650f",
+			"name": "Flatten for Sheet",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [680, -100]
+		},
+		{
+			"parameters": {
+				"operation": "append",
+				"documentId": {
+					"__rl": true,
+					"mode": "id",
+					"value": "YOUR_SPREADSHEET_ID"
+				},
+				"sheetName": {
+					"__rl": true,
+					"mode": "name",
+					"value": "SSL Grades"
+				},
+				"columns": {
+					"mappingMode": "autoMapInputData",
+					"value": {},
+					"matchingColumns": [],
+					"schema": []
+				},
+				"options": {}
+			},
+			"id": "37fcc92b-87cd-4fe8-b0ad-d2938fcf4f9c",
+			"name": "Append to Google Sheet",
+			"type": "n8n-nodes-base.googleSheets",
+			"typeVersion": 4.5,
+			"position": [900, -100]
+		},
+		{
+			"parameters": {
+				"jsCode": "// Build one plain-text summary of all assessed hosts for the email.\nconst hosts = $input.all().map((item) => item.json);\nconst lines = hosts.map((h) => {\n  if (h.error) return `${h.host ?? 'unknown host'}: assessment failed (${h.error})`;\n  const days = h.certificate?.daysUntilExpiry;\n  const cert = days === null || days === undefined ? '' : `; certificate expires in ${days} day(s)`;\n  const warn = h.hasWarnings ? ' [warnings]' : '';\n  return `${h.host}: grade ${h.grade ?? 'n/a'}${warn}${cert}\\n  ${h.reportUrl}`;\n});\nconst weak = hosts.filter((h) => h.grade && !['A+', 'A', 'A-'].includes(h.grade));\nreturn [{\n  json: {\n    subject: `Weekly SSL report: ${hosts.length} host(s), ${weak.length} below A-`,\n    body: ['SSL Labs weekly grade report', '', ...lines].join('\\n'),\n  },\n}];"
+			},
+			"id": "9a809948-7a04-4486-8ab1-b1d625fe642c",
+			"name": "Build Summary",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [680, 100]
+		},
+		{
+			"parameters": {
+				"fromEmail": "n8n@example.com",
+				"toEmail": "security@example.com",
+				"subject": "={{ $json.subject }}",
+				"emailFormat": "text",
+				"text": "={{ $json.body }}",
+				"options": {}
+			},
+			"id": "7e704c8b-4d5d-4c0a-8332-b2329b098ea7",
+			"name": "Send Report Email",
+			"type": "n8n-nodes-base.emailSend",
+			"typeVersion": 2.1,
+			"position": [900, 100]
+		},
+		{
+			"parameters": {
+				"content": "## Weekly SSL grade report\nEvery Monday the SSL Labs node assesses each host (reusing results up to 24 hours old), appends one row per host to Google Sheets and emails a summary.\n\nEach assessment takes 1-5 minutes per IP address, so the node waits up to 30 minutes and runs 2 assessments at a time. Failed hosts are passed on as error items instead of stopping the run.\n\nRegister your email with the node's **Registration → Register** operation before the first run.",
+				"height": 260,
+				"width": 460
+			},
+			"id": "d370d263-dc26-4ffb-b1eb-ea0543e91ae9",
+			"name": "Note",
+			"type": "n8n-nodes-base.stickyNote",
+			"typeVersion": 1,
+			"position": [160, -300]
+		}
+	],
+	"connections": {
+		"Every Monday 07:00": {
+			"main": [
+				[
+					{
+						"node": "Hosts to Check",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Hosts to Check": {
+			"main": [
+				[
+					{
+						"node": "Analyze Hosts",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Analyze Hosts": {
+			"main": [
+				[
+					{
+						"node": "Flatten for Sheet",
+						"type": "main",
+						"index": 0
+					},
+					{
+						"node": "Build Summary",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Flatten for Sheet": {
+			"main": [
+				[
+					{
+						"node": "Append to Google Sheet",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Build Summary": {
+			"main": [
+				[
+					{
+						"node": "Send Report Email",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"pinData": {},
+	"settings": {
+		"executionOrder": "v1"
+	}
+}

@@ -200,6 +200,17 @@ How the trigger behaves:
 - After a call that starts a new assessment, the trigger waits SSL Labs' `newAssessmentCoolOff` before checking the next host.
 - The stored state is versioned (`stateVersion: 1`).
 
+## Example workflows
+
+Import any of these from [`examples/`](examples/) with **Workflows → Import from File**. The hostnames are placeholders; replace them with hosts you own or are authorized to test, and register your email first (see [Registration](#registration)).
+
+| File | What it does |
+|---|---|
+| [`weekly-ssl-grade-report.json`](examples/weekly-ssl-grade-report.json) | Every Monday, assesses a list of hosts and appends grades and certificate expiry dates to Google Sheets. It also emails a summary. |
+| [`alert-on-grade-drop-or-expiring-certificate.json`](examples/alert-on-grade-drop-or-expiring-certificate.json) | Two triggers: send a Slack alert when a grade drops below A or a certificate expires within 21 days. |
+| [`on-demand-scan-webhook.json`](examples/on-demand-scan-webhook.json) | A webhook that returns the grade of a posted host, or the assessment's progress so the caller can poll again. |
+| [`ai-agent-ssl-tool.json`](examples/ai-agent-ssl-tool.json) | An AI Agent that uses the node as a tool to answer "what grade does my site get?" and "when does my certificate expire?" |
+
 ## Rate limits and timing
 
 - An assessment usually takes **1–5 minutes per IP address**, and some hosts have several. That is why **Wait for Result** can run for minutes. Raise **Timeout (Minutes)**, or use **Start Only** and later **Get Status**.
