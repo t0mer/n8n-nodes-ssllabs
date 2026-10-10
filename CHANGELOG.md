@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here. Versions follow `YYYY.M.PATCH`.
 
+## 2026.10.0
+
+- Use only supported codex categories.
+- Align `package.json` on `main` with the published version.
+
 ## 2026.9.0
 
 First release.
