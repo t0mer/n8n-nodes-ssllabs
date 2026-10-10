@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here. Versions follow `YYYY.M.PATCH`.
 
+## 2026.10.1
+
+- Release from a commit whose `package.json` matches the tag, so the Creator Portal can verify the source.
+
 ## 2026.10.0
 
 - Use only supported codex categories.

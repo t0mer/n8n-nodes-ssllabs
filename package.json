@@ -1,6 +1,6 @@
 {
   "name": "@t0mer/n8n-nodes-ssllabs",
-  "version": "2026.10.0",
+  "version": "2026.10.1",
   "description": "n8n community nodes for the Qualys SSL Labs API v4: run SSL/TLS server assessments, get grades and certificate details, and get alerts on grade drops or expiring certificates.",
   "license": "MIT",
   "homepage": "https://github.com/t0mer/n8n-nodes-ssllabs#readme",
